@@ -1,12 +1,15 @@
 """
 TeeLogger — simultaneous console + file output with immediate flush.
 
-Writes every message to both stdout and a timestamped log file under log/,
-flushing after each write so partial output survives a crash or Ctrl‑C.
+Writes every message to both stdout and a timestamped log file under
+log/run_<timestamp>/, flushing after each write so partial output
+survives a crash or Ctrl‑C.  Also records per‑generation best distances
+to a companion CSV file in the same run directory.
 """
 
 from __future__ import annotations
 
+import csv
 import sys
 import time
 from datetime import datetime, timezone
@@ -14,51 +17,63 @@ from pathlib import Path
 from types import TracebackType
 from typing import TextIO
 
-
 LOG_DIR: Path = Path("log")
-"""Directory where log files are stored."""
+"""Directory where per‑run subdirectories are stored."""
 
 
 class TeeLogger:
     """
     Logs messages to both stdout and a persistent log file.
 
-    Each instance opens a uniquely‑named log file (timestamped) inside
-    LOG_DIR and writes every message to both sinks, flushing immediately.
+    Each instance creates a uniquely‑named run subdirectory inside
+    LOG_DIR containing:
+      - tsp.log          : human‑readable text log
+      - convergence.csv  : generation,best_distance records
 
-    Usage as context manager::
-
-        with TeeLogger() as log:
-            log.log("Processing ...")
-
-    Usage without context manager::
-
-        log = TeeLogger()
-        log.log("Processing ...")
-        log.close()
+    Every write is flushed immediately.
     """
 
-    __slots__ = ("_file", "_filepath", "_start_time")
+    __slots__ = ("_log_file", "_csv_file", "_log_dir", "_start_time")
 
-    _file: TextIO
-    _filepath: Path
+    _log_file: TextIO
+    _csv_file: TextIO
+    _log_dir: Path
     _start_time: float
 
     def __init__(self, log_dir: Path | None = None) -> None:
         """
-        Create a log file and prepare for dual output.
+        Create a run subdirectory and open the log + CSV files for writing.
 
         Args:
-            log_dir: Optional override for the log directory.
+            log_dir: Optional override for the parent log directory.
                      Defaults to LOG_DIR ("log/").
         """
-        target_dir: Path = log_dir if log_dir is not None else LOG_DIR
-        target_dir.mkdir(parents=True, exist_ok=True)
-
+        parent_dir: Path = log_dir if log_dir is not None else LOG_DIR
         timestamp: str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        self._filepath = target_dir / f"tsp_{timestamp}.log"
-        self._file = open(str(self._filepath), "w", encoding="utf-8")
+        self._log_dir = parent_dir / f"run_{timestamp}"
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+
+        log_path: Path = self._log_dir / "tsp.log"
+        self._log_file = open(str(log_path), "w", encoding="utf-8")
+
+        csv_path: Path = self._log_dir / "convergence.csv"
+        self._csv_file = open(str(csv_path), "w", encoding="utf-8", newline="")
+        self._csv_file.write("generation,best_distance\n")
+        self._csv_file.flush()
+
         self._start_time = time.time()
+
+    # -- properties ------------------------------------------------------------
+
+    @property
+    def log_dir(self) -> Path:
+        """Path to the run subdirectory containing all outputs."""
+        return self._log_dir
+
+    @property
+    def elapsed(self) -> float:
+        """Return seconds since this logger was created (wall‑clock)."""
+        return time.time() - self._start_time
 
     # -- public API -----------------------------------------------------------
 
@@ -66,22 +81,19 @@ class TeeLogger:
         """Write *message* to stdout and the log file, then flush both."""
         sys.stdout.write(message + "\n")
         sys.stdout.flush()
-        self._file.write(message + "\n")
-        self._file.flush()
+        self._log_file.write(message + "\n")
+        self._log_file.flush()
 
-    def elapsed(self) -> float:
-        """Return seconds since this logger was created (wall‑clock)."""
-        return time.time() - self._start_time
+    def record_generation(self, generation: int, best_distance: float) -> None:
+        """
+        Append a generation record to the CSV file and flush immediately.
 
-    @property
-    def filepath(self) -> Path:
-        """Path to the currently open log file."""
-        return self._filepath
-
-    @property
-    def start_time(self) -> float:
-        """time.time() value captured at logger creation."""
-        return self._start_time
+        Args:
+            generation: The current generation number (zero‑based).
+            best_distance: The best tour distance found so far.
+        """
+        self._csv_file.write(f"{generation},{best_distance:.6f}\n")
+        self._csv_file.flush()
 
     # -- header / footer helpers ----------------------------------------------
 
@@ -112,6 +124,7 @@ class TeeLogger:
             sep,
             "TSP Genetic Algorithm Solver",
             f"Start time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            f"Run directory: {self._log_dir}",
             f"Command: {command}" if command else "",
             f"Input file: {input_file}",
             f"Cities: {cities}",
@@ -139,11 +152,11 @@ class TeeLogger:
         Write a footer with total runtime and final results.
         """
         sep: str = "=" * 60
-        elapsed: float = self.elapsed()
+        elapsed_sec: float = self.elapsed
         lines: list[str] = [
             sep,
             f"Finished at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-            f"Total elapsed: {elapsed:.1f}s",
+            f"Total elapsed: {elapsed_sec:.1f}s",
             f"Best distance: {best_distance:.2f}",
             f"Best tour ({len(best_tour.split(',')) if best_tour else 0} cities):",
             f"  {best_tour}",
@@ -155,9 +168,11 @@ class TeeLogger:
     # -- lifecycle ------------------------------------------------------------
 
     def close(self) -> None:
-        """Flush and close the log file. Safe to call multiple times."""
-        if not self._file.closed:
-            self._file.close()
+        """Flush and close both the log file and CSV file.  Safe to call multiple times."""
+        if not self._log_file.closed:
+            self._log_file.close()
+        if not self._csv_file.closed:
+            self._csv_file.close()
 
     def __enter__(self) -> TeeLogger:
         return self

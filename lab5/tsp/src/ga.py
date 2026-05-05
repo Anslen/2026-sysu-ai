@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 POPULATION_SIZE: int = 100
 """Number of chromosomes in the population."""
 
-MUTATION_RATE: float = 0.1
+MUTATION_RATE: float = 0.15
 """Probability that an offspring undergoes mutation."""
 
 TOURNAMENT_SIZE: int = 3
@@ -49,10 +49,10 @@ TOURNAMENT_SIZE: int = 3
 ELITISM_COUNT: int = 2
 """Number of top chromosomes preserved unchanged each generation."""
 
-MAX_GENERATIONS: int = 10000
+MAX_GENERATIONS: int = 30000
 """Maximum number of generations to evolve."""
 
-REPORT_INTERVAL: int = 100
+REPORT_INTERVAL: int = 500
 """Print a progress report every N generations."""
 
 CROSSOVER_METHOD: str = "ox"
@@ -131,6 +131,8 @@ class GeneticAlgorithm:
         ]
         self._evaluate()
         self._update_best(0)
+        if self._logger is not None:
+            self._logger.record_generation(0, self._best_distance)
 
     # -- evaluation --------------------------------------------------------
 
@@ -275,6 +277,9 @@ class GeneticAlgorithm:
             self._evolve_generation()
             self._evaluate()
             self._update_best(gen)
+
+            if self._logger is not None:
+                self._logger.record_generation(gen, self._best_distance)
 
             if gen % REPORT_INTERVAL == 0:
                 self._report(gen)

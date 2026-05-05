@@ -5,4 +5,5 @@ description = "Solve TSP question with ga"
 requires-python = ">=3.14"
 dependencies = [
     "numpy>=2.4.4",
+    "matplotlib>=3.8",
 ]
