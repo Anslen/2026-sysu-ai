@@ -270,6 +270,101 @@ def ox_crossover(parent1: Chromosome, parent2: Chromosome) -> tuple[Chromosome, 
 
 
 # ---------------------------------------------------------------------------
+# Built-in crossover operator: Edge Recombination Crossover (ERX)
+# ---------------------------------------------------------------------------
+
+
+@register_crossover("erx")
+def erx_crossover(parent1: Chromosome, parent2: Chromosome) -> tuple[Chromosome, Chromosome]:
+    """
+    Edge Recombination Crossover (ERX).
+
+    Builds an edge map from both parents — for each city, the set of
+    cities adjacent to it in either parent tour.  Offspring are
+    constructed by greedily selecting the neighbor with the fewest
+    remaining edges (min‑degree heuristic), which maximises the
+    preservation of parental edges.
+
+    Returns two offspring generated from two independent random walks
+    through the same edge map.
+    """
+    genes1: Genes = parent1.genes
+    genes2: Genes = parent2.genes
+    n: int = len(genes1)
+    rng: random.Random = _rng()
+
+    # Build the undirected edge map from both parent tours
+    edge_map: dict[int, set[int]] = {i: set() for i in range(n)}
+
+    def _collect_edges(tour: Genes) -> None:
+        """Record undirected edges from *tour* into *edge_map*."""
+        for i in range(n):
+            u: int = tour[i]
+            v: int = tour[(i + 1) % n]
+            edge_map[u].add(v)
+            edge_map[v].add(u)
+
+    _collect_edges(genes1)
+    _collect_edges(genes2)
+
+    def _remove_city(city: int, em: dict[int, set[int]]) -> None:
+        """Remove *city* from every neighbour set in *em*."""
+        for neighbors in em.values():
+            neighbors.discard(city)
+
+    def _erx_build_child(
+        em_base: dict[int, set[int]],
+    ) -> Genes:
+        """
+        Build one offspring via the ERX algorithm.
+
+        At each step the current city's neighbours are examined;
+        the one with the fewest remaining edges is chosen (ties broken
+        randomly).  If no neighbour remains, a random unvisited city
+        is picked.
+        """
+        em: dict[int, set[int]] = {c: set(adj) for c, adj in em_base.items()}
+        visited: set[int] = set()
+
+        current: int = rng.choice(list(em.keys()))
+        tour: list[int] = [current]
+        visited.add(current)
+        _remove_city(current, em)
+
+        for _ in range(n - 1):
+            candidates: set[int] = em.get(current, set())
+            next_city: int
+
+            if candidates:
+                # Min‑degree heuristic: pick candidate with fewest remaining edges
+                min_deg: int = min(len(em.get(c, set())) for c in candidates)
+                best: list[int] = [
+                    c for c in candidates if len(em.get(c, set())) == min_deg
+                ]
+                next_city = rng.choice(best)
+            else:
+                # Dead end — pick any unvisited city at random
+                remaining: list[int] = [
+                    c for c in em if c not in visited
+                ]
+                if not remaining:
+                    break
+                next_city = rng.choice(remaining)
+
+            tour.append(next_city)
+            visited.add(next_city)
+            _remove_city(next_city, em)
+            current = next_city
+
+        return tuple(tour)  # type: ignore[return-value]
+
+    return (
+        Chromosome(_erx_build_child(edge_map)),
+        Chromosome(_erx_build_child(edge_map)),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Built-in mutation operator: Inversion Mutation
 # ---------------------------------------------------------------------------
 

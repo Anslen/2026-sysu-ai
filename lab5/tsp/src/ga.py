@@ -37,10 +37,10 @@ if TYPE_CHECKING:
 # Global GA constants — tweak these to tune the algorithm
 # ---------------------------------------------------------------------------
 
-POPULATION_SIZE: int = 100
+POPULATION_SIZE: int = 200
 """Number of chromosomes in the population."""
 
-MUTATION_RATE: float = 0.15
+MUTATION_RATE: float = 0.2
 """Probability that an offspring undergoes mutation."""
 
 TOURNAMENT_SIZE: int = 3
@@ -55,7 +55,7 @@ MAX_GENERATIONS: int = 30000
 REPORT_INTERVAL: int = 500
 """Print a progress report every N generations."""
 
-CROSSOVER_METHOD: str = "ox"
+CROSSOVER_METHOD: str = "erx"
 """Key of the crossover operator in crossover_registry."""
 
 MUTATION_METHOD: str = "inversion"
