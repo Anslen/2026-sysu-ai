@@ -386,3 +386,37 @@ def inversion_mutation(chromosome: Chromosome) -> None:
         a, b = b, a
     rev: Genes = genes[a:b + 1][::-1]
     chromosome.genes = genes[:a] + rev + genes[b + 1:]
+
+
+# ---------------------------------------------------------------------------
+# Built-in mutation operator: Insertion Mutation
+# ---------------------------------------------------------------------------
+
+
+@register_mutation("insertion")
+def insertion_mutation(chromosome: Chromosome) -> None:
+    """
+    Insertion Mutation.
+
+    Randomly selects a city and re‑inserts it at a different position,
+    shifting the intermediate cities along the tour.  This is a
+    local‑move operator that preserves most of the tour structure while
+    exploring alternative orderings of individual cities.
+    """
+    genes: Genes = chromosome.genes
+    n: int = len(genes)
+    rng: random.Random = _rng()
+    src: int = rng.randrange(0, n)
+    dst: int = rng.randrange(0, n - 1)
+    if dst >= src:
+        dst += 1
+
+    city: int = genes[src]
+    if src < dst:
+        chromosome.genes = (
+            genes[:src] + genes[src + 1:dst + 1] + (city,) + genes[dst + 1:]
+        )
+    else:
+        chromosome.genes = (
+            genes[:dst] + (city,) + genes[dst:src] + genes[src + 1:]
+        )

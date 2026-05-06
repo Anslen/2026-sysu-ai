@@ -12,6 +12,9 @@ uv sync
 uv run python src/main.py                    # 默认 data/qa194.tsp
 uv run python src/main.py data/other.tsp     # 指定数据文件
 
+# 查看历史运行的收敛曲线
+uv run python src/main.py --plot log/run_xxx/convergence.csv
+
 # 或直接使用 venv 中的解释器
 .venv/bin/python src/main.py [参数]
 ```
@@ -28,15 +31,16 @@ uv run python src/main.py data/other.tsp     # 指定数据文件
 
 ```
 tsp/
-├── pyproject.toml           # 依赖：numpy>=2.4.4
+├── pyproject.toml           # 依赖：numpy>=2.4.4, matplotlib>=3.8
 ├── .python-version          # 3.14+freethreaded
 ├── AGENTS.md                # 本文件
 ├── src/
-│   ├── main.py              # 入口
+│   ├── main.py              # 入口：运行 GA + 自动绘图，支持 --plot 加载历史
 │   ├── ga.py                # 遗传算法核心（选择、交叉、变异、种群进化）
-│   ├── chromosome.py         # 染色体类 + OX 交叉 / 逆转变异算子
+│   ├── chromosome.py         # 染色体类 + ERX/OX 交叉 + inversion/insertion 变异
 │   ├── tsp_data.py           # TSPLIB 数据解析 + 距离矩阵构建
-│   └── tee_logger.py         # 日志工具（stdout + 文件双写，即时 flush）
+│   ├── tee_logger.py         # 日志工具（stdout + 文件双写 + CSV 记录，即时 flush）
+│   └── plotting.py           # 收敛曲线绘制（PNG 保存 + 交互式显示）
 └── data/
     └── qa194.tsp             # 194 城市 TSP 数据（Qatar）
 ```
@@ -67,16 +71,48 @@ from src.tee_logger import TeeLogger
 
 | 常量 | 默认值 | 说明 |
 |------|--------|------|
-| `POPULATION_SIZE` | 100 | 种群大小 |
-| `MAX_GENERATIONS` | 10000 | 最大代数 |
-| `MUTATION_RATE` | 0.1 | 变异概率 |
+| `POPULATION_SIZE` | 200 | 种群大小 |
+| `MAX_GENERATIONS` | 30000 | 最大代数 |
+| `MUTATION_METHODS` | `{"insertion": 0.15, "inversion": 0.10}` | 变异方法及其独立概率的字典，每个子代对每种变异独立判断是否应用 |
 | `TOURNAMENT_SIZE` | 3 | 锦标赛选择竞争人数 |
 | `ELITISM_COUNT` | 2 | 每代保留的最优个体数 |
-| `REPORT_INTERVAL` | 100 | 每隔 N 代输出一次进度 |
-| `CROSSOVER_METHOD` | `"ox"` | 交叉方法（Order Crossover） |
-| `MUTATION_METHOD` | `"inversion"` | 变异方法（逆转变异） |
+| `REPORT_INTERVAL` | 500 | 每隔 N 代输出一次进度 |
+| `CROSSOVER_METHOD` | `"erx"` | 交叉方法（Edge Recombination Crossover） |
 | `SEED` | `None` | 随机种子，设为整数可复现结果 |
 | `THREAD_WORKERS` | `os.cpu_count()` | 进化并行线程数，默认使用全部 CPU 核心 |
+
+### 混合变异
+
+`MUTATION_METHODS` 是一个 `dict[str, float]`，key 为变异算子名，value 为独立应用概率。示例：
+
+```python
+MUTATION_METHODS: dict[str, float] = {
+    "insertion": 0.15,   # 15% 概率插入变异
+    "inversion": 0.10,   # 10% 概率逆转变异
+}
+```
+
+添加新变异只需向字典追加键值对，无需修改其他代码（前提是变异算子已通过 `@register_mutation` 注册）。
+
+---
+
+## 可用算子
+
+### 交叉算子（`crossover_registry`）
+
+| 键名 | 函数 | 说明 |
+|------|------|------|
+| `"erx"` | `erx_crossover` | **Edge Recombination Crossover**：构建双亲边图，用 min-degree heuristic 逐步选择邻居构建子代，最大化保留父代边结构 |
+| `"ox"` | `ox_crossover` | **Order Crossover**：随机切两点，子代继承一段父代基因，其余按另一父代顺序填充 |
+
+### 变异算子（`mutation_registry`）
+
+| 键名 | 函数 | 说明 |
+|------|------|------|
+| `"insertion"` | `insertion_mutation` | **插入变异**：随机选取一个城市，移除并插入到另一随机位置，中间城市顺移 |
+| `"inversion"` | `inversion_mutation` | **逆转变异**：随机选两点，反转两点之间的子序列 |
+
+通过 `@register_crossover("name")` / `@register_mutation("name")` 装饰器可注册新算子，无需修改类定义。
 
 ---
 
@@ -110,11 +146,30 @@ dists = dist_matrix[genes, np.roll(genes, -1, axis=1)].sum(axis=1)
 
 ---
 
-## 日志
+## 日志与输出
 
-- 每次运行自动在 `log/` 目录创建时间戳日志文件（如 `log/tsp_20260505_143022.log`）
+每次运行在 `log/` 下创建独立子文件夹：
+
+```
+log/
+└── run_20260505_150000/
+    ├── tsp.log           # 文字日志（即时 flush）
+    ├── convergence.csv   # 每代最优值：generation,best_distance（即时 flush）
+    └── convergence.png   # 收敛曲线图（运行结束后自动生成）
+```
+
 - 每条输出后立即 `flush`，程序中断不丢失已输出的记录
+- `convergence.csv` 每写入一行立即 `flush`，中断时已有数据完整
+- 运行结束后自动调用 matplotlib 绘制收敛曲线（保存 PNG + 弹出交互窗口）
 - 日志包含：运行起始时间、命令行参数、所有算法参数、每代进度、最终结果
+
+### 查看历史收敛曲线
+
+```bash
+uv run python src/main.py --plot log/run_xxx/convergence.csv
+```
+
+加载已有 CSV 文件并弹出交互式 matplotlib 窗口，无需重新运行 GA。
 
 ---
 

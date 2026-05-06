@@ -105,9 +105,8 @@ class TeeLogger:
         cities: int = 0,
         pop_size: int = 0,
         max_gen: int = 0,
-        mutation_rate: float = 0.0,
+        mutation_methods: dict[str, float] | None = None,
         crossover_method: str = "",
-        mutation_method: str = "",
         tournament_size: int = 0,
         elitism_count: int = 0,
         report_interval: int = 0,
@@ -132,9 +131,15 @@ class TeeLogger:
             "Algorithm Parameters:",
             f"  Population Size  : {pop_size}",
             f"  Max Generations  : {max_gen}",
-            f"  Mutation Rate    : {mutation_rate}",
             f"  Crossover Method : {crossover_method}",
-            f"  Mutation Method  : {mutation_method}",
+            "  Mutation Methods :",
+        ]
+        if mutation_methods:
+            for method, rate in mutation_methods.items():
+                lines.append(f"    {method:15s} : {rate}")
+        else:
+            lines.append("    (none)")
+        lines.extend([
             f"  Tournament Size  : {tournament_size}",
             f"  Elitism Count    : {elitism_count}",
             f"  Report Interval  : {report_interval}",
@@ -142,7 +147,7 @@ class TeeLogger:
             f"  Thread Workers   : {thread_workers}",
             sep,
             "",
-        ]
+        ])
         for line in lines:
             if line:  # skip empty strings so they don't add blank lines
                 self.log(line)

@@ -40,8 +40,13 @@ if TYPE_CHECKING:
 POPULATION_SIZE: int = 200
 """Number of chromosomes in the population."""
 
-MUTATION_RATE: float = 0.2
-"""Probability that an offspring undergoes mutation."""
+MUTATION_METHODS: dict[str, float] = {
+    "insertion": 0.15,
+    "inversion": 0.10,
+}
+"""Mutation methods with per‑offspring independent application probabilities.
+Each method is applied independently — an offspring may undergo multiple
+or no mutations in a single generation."""
 
 TOURNAMENT_SIZE: int = 3
 """Number of individuals competing in each tournament selection."""
@@ -57,9 +62,6 @@ REPORT_INTERVAL: int = 500
 
 CROSSOVER_METHOD: str = "erx"
 """Key of the crossover operator in crossover_registry."""
-
-MUTATION_METHOD: str = "inversion"
-"""Key of the mutation operator in mutation_registry."""
 
 SEED: int | None = None
 """Random seed for reproducibility.  Set to an int to fix, or None to skip."""
@@ -115,11 +117,12 @@ class GeneticAlgorithm:
                 f"Crossover method '{CROSSOVER_METHOD}' is not registered. "
                 f"Available: {list(crossover_registry.keys())}"
             )
-        if MUTATION_METHOD not in mutation_registry:
-            raise ValueError(
-                f"Mutation method '{MUTATION_METHOD}' is not registered. "
-                f"Available: {list(mutation_registry.keys())}"
-            )
+        for method in MUTATION_METHODS:
+            if method not in mutation_registry:
+                raise ValueError(
+                    f"Mutation method '{method}' is not registered. "
+                    f"Available: {list(mutation_registry.keys())}"
+                )
 
     # -- population init ---------------------------------------------------
 
@@ -208,10 +211,11 @@ class GeneticAlgorithm:
                 p1: Chromosome = self._tournament_select()
                 p2: Chromosome = self._tournament_select()
                 c1, c2 = p1.crossover(p2, CROSSOVER_METHOD)
-                if rng.random() < MUTATION_RATE:
-                    c1.mutate(MUTATION_METHOD)
-                if rng.random() < MUTATION_RATE:
-                    c2.mutate(MUTATION_METHOD)
+                for method, rate in MUTATION_METHODS.items():
+                    if rng.random() < rate:
+                        c1.mutate(method)
+                    if rng.random() < rate:
+                        c2.mutate(method)
                 result.append(c1)
                 result.append(c2)
             return result
@@ -266,9 +270,8 @@ class GeneticAlgorithm:
         self._log(
             f"GA start — Pop: {POPULATION_SIZE}  "
             f"MaxGen: {MAX_GENERATIONS}  "
-            f"Mutation: {MUTATION_RATE}  "
+            f"Mutations: {MUTATION_METHODS}  "
             f"Crossover: {CROSSOVER_METHOD}  "
-            f"MutationOp: {MUTATION_METHOD}  "
             f"Thr: {THREAD_WORKERS}"
         )
         self._log(f"Initial best distance: {self._best_distance:.2f}")
