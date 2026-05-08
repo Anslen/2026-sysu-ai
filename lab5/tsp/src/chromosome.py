@@ -365,6 +365,81 @@ def erx_crossover(parent1: Chromosome, parent2: Chromosome) -> tuple[Chromosome,
 
 
 # ---------------------------------------------------------------------------
+# Built-in crossover operator: Partially Mapped Crossover (PMX)
+# ---------------------------------------------------------------------------
+
+
+@register_crossover("pmx")
+def pmx_crossover(parent1: Chromosome, parent2: Chromosome) -> tuple[Chromosome, Chromosome]:
+    """
+    Partially Mapped Crossover (PMX).
+
+    Selects two random cut points and copies the segment between them
+    from the first parent to the child.  The remaining positions are
+    filled from the second parent; conflicts are resolved via the
+    mapping induced by the swapped segment.
+
+    Returns two offspring (parent1⊕parent2 and parent2⊕parent1).
+    """
+    genes1: Genes = parent1.genes
+    genes2: Genes = parent2.genes
+    n: int = len(genes1)
+    rng: random.Random = _rng()
+
+    a: int = rng.randrange(0, n)
+    b: int = rng.randrange(0, n)
+    if a > b:
+        a, b = b, a
+    b += 1  # segment is [a, b)
+
+    def _pmx_child(p: Genes, q: Genes) -> Genes:
+        """Build one child using p for the segment and q for the rest.
+
+        Conflicts (values already placed in the segment) are resolved by
+        following the position‑based mapping chain: if q[i] is already in
+        child, find its position j in the segment of p and replace it with
+        q[j]; repeat until an unused value is found.  A visited set
+        prevents infinite loops on closed permutation cycles."""
+        child: list[int] = [-1] * n
+        used: set[int] = set()
+
+        # Position lookup for p within the segment
+        pos_in_p: dict[int, int] = {}
+        for j in range(a, b):
+            child[j] = p[j]
+            used.add(p[j])
+            pos_in_p[p[j]] = j
+
+        for i in range(n):
+            if a <= i < b:
+                continue
+            val: int = q[i]
+            visited: set[int] = {val}
+            while val in used:
+                j: int | None = pos_in_p.get(val)
+                if j is None:
+                    break
+                val = q[j]
+                if val in visited:
+                    # Cycle detected — pick any unused city
+                    for c in range(n):
+                        if c not in used:
+                            val = c
+                            break
+                    break
+                visited.add(val)
+            child[i] = val
+            used.add(val)
+
+        return tuple(child)  # type: ignore[return-value]
+
+    return (
+        Chromosome(_pmx_child(genes1, genes2)),
+        Chromosome(_pmx_child(genes2, genes1)),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Built-in mutation operator: Inversion Mutation
 # ---------------------------------------------------------------------------
 
