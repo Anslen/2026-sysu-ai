@@ -2,6 +2,8 @@ __pycache__
 
 .vscode
 .opencode
+.claude
+.ruff_cache
 
 docs
 
@@ -11,4 +13,8 @@ docs
 .venv
 data
 log
+outputs
 
+*.typ
+*.pdf
+*.png

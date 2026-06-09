@@ -1,0 +1,16 @@
+[project]
+name = "house-prices-perceptron"
+version = "0.1.0"
+description = "House price regression with a hand-coded perceptron (linear model + SGD)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "matplotlib>=3.8",
+]
+
+[project.scripts]
+house-prices = "house_prices.cli:main"
+
+[dependency-groups]
+dev = []

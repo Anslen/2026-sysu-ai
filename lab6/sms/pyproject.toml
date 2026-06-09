@@ -1,0 +1,13 @@
+[project]
+name = "sms-spam-bayes"
+version = "0.1.0"
+description = "SMS spam classification with bag-of-words and naive bayes"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+sms-spam = "sms_spam.cli:main"
+
+[dependency-groups]
+dev = []
